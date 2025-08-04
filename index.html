@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> ادارة الديون سقيا</title>
+    <link rel="icon" type="image/png" href="drop.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+        
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #f8fafc;
+        }
+        
+        /* Custom modal transition styles */
+        .modal {
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .floating-btn {
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .floating-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        }
+        
+        .debtor-card {
+            transition: all 0.3s ease;
+        }
+        
+        .debtor-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Style for date input to allow typing when Flatpickr is not used */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            background: none;
+            display: none; /* Hide default calendar icon */
+        }
+        input[type="date"] {
+            position: relative;
+        }
+        input[type="date"]::after {
+            font-family: 'Font Awesome 6 Free'; /* Adjust if using different FA version */
+            content: "\f073"; /* Calendar icon */
+            font-weight: 900;
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6B7280; /* Gray-500 */
+            pointer-events: none; /* Make sure it doesn't interfere with input click */
+        }
+
+        /* Styles for PDF generation (hidden, only for conversion) */
+        #pdf-content {
+            font-family: 'Tajawal', sans-serif; /* Ensure Tajawal is used in PDF */
+            direction: rtl;
+            text-align: right;
+            padding: 20mm;
+            font-size: 10pt;
+            box-sizing: border-box; /* Include padding in element's total width and height */
+            width: 210mm; /* A4 width */
+            min-height: 297mm; /* A4 height */
+        }
+
+        #pdf-content h1, #pdf-content h2, #pdf-content h3 {
+            color: #1f2937;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        #pdf-content h1 { font-size: 24pt; }
+        #pdf-content h2 { font-size: 18pt; }
+        #pdf-content h3 { font-size: 14pt; }
+
+        #pdf-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        #pdf-content th, #pdf-content td {
+            border: 1px solid #e5e7eb;
+            padding: 8px;
+            text-align: right;
+        }
+        #pdf-content th {
+            background-color: #eff6ff;
+            font-weight: bold;
+        }
+        #pdf-content .total-summary-table td:first-child {
+            font-weight: bold;
+        }
+        #pdf-content .text-center { text-align: center; }
+        #pdf-content .text-right { text-align: right; }
+        #pdf-content .text-left { text-align: left; }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50">
+
+    <header class="bg-blue-700 text-white py-3 px-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="text-right">
+                <h1 class="text-lg font-semibold leading-tight">
+                    نظام إدارة ديون تعبئة الماء
+                    <span class="block text-sm opacity-85">(خاص بمسفر علي الزهراني)</span>
+                </h1>
+            </div>
+            <div class="flex items-center">
+                <i class="fas fa-tint text-xl ml-2"></i> <span class="text-lg font-medium">سقيا</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div id="empty-state" class="text-center py-20">
+           
+            <h2 class="text-2xl font-semibold text-gray-700 mb-2">لا توجد سجلات ديون بعد</h2>
+            <p class="text-gray-500 mb-6">انقر على زر الإضافة أدناه لتسجيل تعبئة ماء جديدة</p>
+        </div>
+
+        <div id="debtor-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 hidden">
+            </div>
+    </main>
+
+    <button id="add-transaction-btn" class="fixed bottom-8 left-8 bg-blue-600 text-white w-14 h-14 rounded-full flex items-center justify-center floating-btn z-40">
+        <i class="fas fa-plus text-2xl"></i>
+    </button>
+
+    <div id="add-transaction-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-semibold text-gray-800">تسجيل تعبئة ماء جديدة</h3>
+                    <button id="close-transaction-modal" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <form id="transaction-form">
+                    <div class="mb-4">
+                        <label for="transaction-client-name" class="block text-gray-700 mb-2">اسم العميل</label>
+                        <input type="text" id="transaction-client-name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="transaction-date" class="block text-gray-700 mb-2">تاريخ التعبئة</label>
+                        <input type="date" id="transaction-date" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="transaction-refills-count" class="block text-gray-700 mb-2">عدد مرات التعبئة (في هذا اليوم)</label>
+                        <input type="number" id="transaction-refills-count" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" min="1" value="1" required>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="transaction-amount" class="block text-gray-700 mb-2">المبلغ المستحق لهذا اليوم</label>
+                        <input type="number" step="0.01" id="transaction-amount" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+
+                    <div class="mb-6">
+                        <label for="transaction-notes" class="block text-gray-700 mb-2">ملاحظات (اختياري)</label>
+                        <textarea id="transaction-notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" rows="3" placeholder="مثال: سقيا في منزل العميل الجديد..."></textarea>
+                    </div>
+                    
+                    <div class="flex justify-end space-x-4 space-x-reverse">
+                        <button type="button" id="cancel-transaction-btn" class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">إلغاء</button>
+                        <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">حفظ التعبئة</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="debtor-details-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 id="details-client-name" class="text-xl font-semibold text-gray-800">تفاصيل ديون العميل</h3>
+                    <button id="close-debtor-details" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="mb-6">
+                    <div class="bg-blue-50 p-4 rounded-lg mb-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                        <div>
+                            <p class="text-gray-500 text-sm">إجمالي المبلغ المستحق</p>
+                            <p id="details-total-debt-amount" class="text-xl md:text-2xl font-bold text-blue-600">0 ر.س</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-500 text-sm">إجمالي عدد التعبئات</p>
+                            <p id="details-total-refills" class="text-xl md:text-2xl font-bold text-blue-600">0</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-500 text-sm">المبلغ المدفوع</p>
+                            <p id="details-total-paid-amount" class="text-xl md:text-2xl font-bold text-green-600">0 ر.س</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-500 text-sm">المبلغ المتبقي</p>
+                            <p id="details-remaining-amount" class="text-xl md:text-2xl font-bold text-red-600">0 ر.س</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <h4 class="font-medium text-gray-700 mb-2">سجل تعبئات الماء</h4>
+                        <div id="transactions-list" class="space-y-3 max-h-48 overflow-y-auto pr-2 border border-gray-200 rounded-md p-2">
+                            </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="font-medium text-gray-700">سجل الدفعات (السداد)</h4>
+                            <button id="add-payment-btn" class="text-blue-600 hover:text-blue-800 flex items-center">
+                                <i class="fas fa-plus-circle ml-1"></i>
+                                إضافة دفعة سداد
+                            </button>
+                        </div>
+                        
+                        <div id="payments-list" class="space-y-3 max-h-48 overflow-y-auto pr-2 border border-gray-200 rounded-md p-2">
+                            </div>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+                    <button id="add-transaction-for-client-btn" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center">
+                        <i class="fas fa-tint ml-2"></i>
+                        إضافة تعبئة ماء جديدة
+                    </button>
+                    <button id="print-client-invoice-btn" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 flex items-center justify-center">
+                        <i class="fas fa-file-pdf ml-2"></i>
+                        طباعة فاتورة PDF
+                    </button>
+                    <button id="delete-client-btn" class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center justify-center">
+                        <i class="fas fa-user-times ml-2"></i>
+                        حذف العميل وسجلاته
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="payment-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-semibold text-gray-800">إضافة دفعة سداد جديدة</h3>
+                    <button id="close-payment-modal" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <form id="payment-form">
+                    <div class="mb-4">
+                        <label for="payment-transaction-date" class="block text-gray-700 mb-2">اختر تاريخ التعبئة (الدين) المرتبط بالدفعة</label>
+                        <select id="payment-transaction-date" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                            <option value="">اختر تاريخ تعبئة...</option>
+                            </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="payment-date" class="block text-gray-700 mb-2">تاريخ الدفعة</label>
+                        <input type="date" id="payment-date" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="payment-amount" class="block text-gray-700 mb-2">المبلغ المدفوع</label>
+                        <input type="number" step="0.01" id="payment-amount" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+
+                    <div class="mb-6 text-center">
+                        <button type="button" id="pay-full-amount-btn" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 w-full">
+                            سداد كامل المبلغ المتبقي
+                        </button>
+                    </div>
+                    
+                    <div class="flex justify-end space-x-4 space-x-reverse">
+                        <button type="button" id="cancel-payment-btn" class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">إلغاء</button>
+                        <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">حفظ الدفعة</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="pdf-content" class="hidden"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ar.js"></script> <script>
+        // Use globalThis for jspdf to ensure it's accessible in all environments
+        const { jsPDF } = globalThis.jspdf;
+
+        // Initialize data from localStorage
+        let clientsData = JSON.parse(localStorage.getItem('clientsData')) || {};
+        let currentClientId = null; // To keep track of the currently viewed client
+
+        // DOM Elements
+        const addTransactionBtn = document.getElementById('add-transaction-btn');
+        const addTransactionModal = document.getElementById('add-transaction-modal');
+        const closeTransactionModalBtn = document.getElementById('close-transaction-modal');
+        const cancelTransactionBtn = document.getElementById('cancel-transaction-btn');
+        const transactionForm = document.getElementById('transaction-form');
+        const transactionClientNameInput = document.getElementById('transaction-client-name');
+        const transactionDateInput = document.getElementById('transaction-date');
+        const transactionRefillsCountInput = document.getElementById('transaction-refills-count');
+        const transactionAmountInput = document.getElementById('transaction-amount');
+        const transactionNotesInput = document.getElementById('transaction-notes'); // New: Notes input
+
+        const debtorListDiv = document.getElementById('debtor-list');
+        const emptyStateDiv = document.getElementById('empty-state');
+
+        const debtorDetailsModal = document.getElementById('debtor-details-modal');
+        const closeDebtorDetailsModalBtn = document.getElementById('close-debtor-details');
+        const detailsClientName = document.getElementById('details-client-name');
+        const detailsTotalDebtAmount = document.getElementById('details-total-debt-amount');
+        const detailsTotalRefills = document.getElementById('details-total-refills');
+        const detailsTotalPaidAmount = document.getElementById('details-total-paid-amount');
+        const detailsRemainingAmount = document.getElementById('details-remaining-amount');
+        const transactionsListDiv = document.getElementById('transactions-list');
+        const paymentsListDiv = document.getElementById('payments-list');
+        const addPaymentBtn = document.getElementById('add-payment-btn');
+        const printClientInvoiceBtn = document.getElementById('print-client-invoice-btn');
+        const deleteClientBtn = document.getElementById('delete-client-btn');
+        const addTransactionForClientBtn = document.getElementById('add-transaction-for-client-btn');
+
+        const paymentModal = document.getElementById('payment-modal');
+        const closePaymentModalBtn = document.getElementById('close-payment-modal');
+        const cancelPaymentBtn = document.getElementById('cancel-payment-btn');
+        const paymentForm = document.getElementById('payment-form');
+        const paymentTransactionDateSelect = document.getElementById('payment-transaction-date');
+        const paymentDateInput = document.getElementById('payment-date');
+        const paymentAmountInput = document.getElementById('payment-amount');
+        const payFullAmountBtn = document.getElementById('pay-full-amount-btn');
+
+        // Flatpickr Initialization for date inputs
+        flatpickr(transactionDateInput, {
+            locale: "ar",
+            dateFormat: "Y-m-d", // YYYY-MM-DD for consistency
+            defaultDate: new Date(),
+        });
+        flatpickr(paymentDateInput, {
+            locale: "ar",
+            dateFormat: "Y-m-d", // YYYY-MM-DD for consistency
+            defaultDate: new Date(),
+        });
+
+        // Event Listeners
+        addTransactionBtn.addEventListener('click', () => openAddTransactionModal(false));
+        closeTransactionModalBtn.addEventListener('click', closeAddTransactionModal);
+        cancelTransactionBtn.addEventListener('click', closeAddTransactionModal);
+        transactionForm.addEventListener('submit', saveTransaction);
+
+        closeDebtorDetailsModalBtn.addEventListener('click', () => debtorDetailsModal.classList.remove('active'));
+        addPaymentBtn.addEventListener('click', () => openPaymentModal());
+        printClientInvoiceBtn.addEventListener('click', generateClientInvoicePdf);
+        deleteClientBtn.addEventListener('click', confirmDeleteClient);
+        addTransactionForClientBtn.addEventListener('click', () => openAddTransactionModal(true));
+
+        closePaymentModalBtn.addEventListener('click', () => paymentModal.classList.remove('active'));
+        cancelPaymentBtn.addEventListener('click', () => paymentModal.classList.remove('active'));
+        paymentForm.addEventListener('submit', savePayment);
+        payFullAmountBtn.addEventListener('click', payFullRemainingAmount);
+
+        // --- Core Functions ---
+
+        function saveToLocalStorage() {
+            localStorage.setItem('clientsData', JSON.stringify(clientsData));
+            renderDebtorList();
+        }
+
+        function openAddTransactionModal(fromClientDetails = false) {
+            transactionForm.reset();
+            // Clear notes input specifically
+            transactionNotesInput.value = ''; 
+
+            if (fromClientDetails && currentClientId && clientsData[currentClientId]) {
+                transactionClientNameInput.value = clientsData[currentClientId].name;
+                transactionClientNameInput.readOnly = true;
+                transactionClientNameInput.classList.add('bg-gray-100', 'cursor-not-allowed');
+            } else {
+                transactionClientNameInput.value = '';
+                transactionClientNameInput.readOnly = false;
+                transactionClientNameInput.classList.remove('bg-gray-100', 'cursor-not-allowed');
+            }
+            addTransactionModal.classList.add('active');
+        }
+
+        function closeAddTransactionModal() {
+            addTransactionModal.classList.remove('active');
+            transactionClientNameInput.value = '';
+            transactionClientNameInput.readOnly = false;
+            transactionClientNameInput.classList.remove('bg-gray-100', 'cursor-not-allowed');
+            transactionNotesInput.value = ''; // Ensure notes are cleared on close
+        }
+
+        function renderDebtorList() {
+            debtorListDiv.innerHTML = '';
+            const clientIds = Object.keys(clientsData);
+
+            if (clientIds.length === 0) {
+                debtorListDiv.classList.add('hidden');
+                emptyStateDiv.classList.remove('hidden');
+                return;
+            }
+
+            emptyStateDiv.classList.add('hidden');
+            debtorListDiv.classList.remove('hidden');
+
+            const sortedClientIds = clientIds.sort((a, b) => clientsData[a].name.localeCompare(clientsData[b].name, 'ar'));
+
+            sortedClientIds.forEach(clientId => {
+                const client = clientsData[clientId];
+                const totalDebt = client.transactions.reduce((sum, t) => sum + t.amount, 0);
+                const totalPaid = client.payments.reduce((sum, p) => sum + p.amount, 0);
+                const remainingAmount = totalDebt - totalPaid;
+                const totalRefills = client.transactions.reduce((sum, t) => sum + t.refills, 0);
+
+                const debtorCard = document.createElement('div');
+                debtorCard.className = 'debtor-card bg-white rounded-lg shadow-md overflow-hidden p-6 cursor-pointer hover:shadow-lg';
+                debtorCard.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-xl font-semibold text-gray-800">${client.name}</h3>
+                            <p class="text-gray-500 text-sm">إجمالي تعبئات: ${totalRefills} مرة</p>
+                        </div>
+                        <span class="text-xl font-bold ${remainingAmount > 0 ? 'text-red-600' : 'text-green-600'}">
+                            ${remainingAmount.toFixed(2)} ر.س
+                        </span>
+                    </div>
+                    <div class="mb-4 text-sm text-gray-600">
+                        <div class="flex justify-between">
+                            <span>إجمالي الدين:</span>
+                            <span>${totalDebt.toFixed(2)} ر.س</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>المسدد:</span>
+                            <span>${totalPaid.toFixed(2)} ر.س</span>
+                        </div>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${Math.min(100, (totalPaid / totalDebt) * 100)}%"></div>
+                    </div>
+                `;
+                
+                debtorCard.addEventListener('click', () => openDebtorDetails(clientId));
+                debtorListDiv.appendChild(debtorCard);
+            });
+        }
+
+        // Saves a new water refill transaction
+        function saveTransaction(e) {
+            e.preventDefault();
+            const clientName = transactionClientNameInput.value.trim();
+            const date = transactionDateInput.value;
+            const refills = parseInt(transactionRefillsCountInput.value);
+            const amount = parseFloat(transactionAmountInput.value);
+            const notes = transactionNotesInput.value.trim(); // Get notes value
+
+            if (!clientName || !date || isNaN(refills) || refills < 1 || isNaN(amount) || amount <= 0) {
+                alert('الرجاء تعبئة جميع الحقول بقيم صحيحة (المبلغ وعدد التعبئات يجب أن يكونا أكبر من صفر).');
+                return;
+            }
+
+            let clientId = Object.keys(clientsData).find(id => clientsData[id].name.toLowerCase() === clientName.toLowerCase());
+            if (!clientId) {
+                clientId = Date.now().toString(); 
+                clientsData[clientId] = {
+                    name: clientName,
+                    transactions: [],
+                    payments: []
+                };
+            }
+
+            clientsData[clientId].transactions.push({
+                id: Date.now().toString() + '_trans',
+                date: date,
+                refills: refills,
+                amount: amount,
+                notes: notes // Save notes with the transaction
+            });
+
+            saveToLocalStorage();
+            closeAddTransactionModal();
+            if (currentClientId && clientId === currentClientId) {
+                openDebtorDetails(currentClientId);
+            }
+            alert('تم تسجيل تعبئة الماء بنجاح!');
+        }
+
+        // Opens the client details modal
+        function openDebtorDetails(clientId) {
+            currentClientId = clientId;
+            const client = clientsData[clientId];
+            if (!client) return;
+
+            detailsClientName.textContent = client.name;
+
+            const totalDebt = client.transactions.reduce((sum, t) => sum + t.amount, 0);
+            const totalRefills = client.transactions.reduce((sum, t) => sum + t.refills, 0);
+            const totalPaid = client.payments.reduce((sum, p) => sum + p.amount, 0);
+            const remainingAmount = totalDebt - totalPaid;
+
+            detailsTotalDebtAmount.textContent = `${totalDebt.toFixed(2)} ر.س`;
+            detailsTotalRefills.textContent = totalRefills;
+            detailsTotalPaidAmount.textContent = `${totalPaid.toFixed(2)} ر.س`;
+            detailsRemainingAmount.textContent = `${remainingAmount.toFixed(2)} ر.س`;
+
+            // Render Transactions List
+            transactionsListDiv.innerHTML = '';
+            if (client.transactions.length === 0) {
+                transactionsListDiv.innerHTML = '<p class="text-gray-500 text-center py-4">لا توجد تعبئات ماء مسجلة لهذا العميل.</p>';
+            } else {
+                client.transactions.sort((a, b) => new Date(a.date) - new Date(b.date)); 
+                client.transactions.forEach(transaction => {
+                    const transactionItem = document.createElement('div');
+                    transactionItem.className = 'bg-gray-50 p-3 rounded-lg flex justify-between items-center flex-wrap'; // Added flex-wrap
+                    transactionItem.innerHTML = `
+                        <div class="flex-grow">
+                            <p class="font-medium">بتاريخ: ${formatDate(transaction.date)}</p>
+                            <p class="text-sm text-gray-600">المبلغ: ${transaction.amount.toFixed(2)} ر.س | التعبئات: ${transaction.refills}</p>
+                            ${transaction.notes ? `<p class="text-sm text-gray-700 mt-1">ملاحظات: ${transaction.notes}</p>` : ''}
+                        </div>
+                        <button class="text-red-500 hover:text-red-700 p-1 delete-transaction-btn mt-2 sm:mt-0" data-transaction-id="${transaction.id}" title="حذف هذه التعبئة">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    `;
+                    transactionsListDiv.appendChild(transactionItem);
+                });
+                transactionsListDiv.querySelectorAll('.delete-transaction-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const transactionIdToDelete = e.currentTarget.dataset.transactionId;
+                        confirmDeleteTransaction(currentClientId, transactionIdToDelete);
+                    });
+                });
+            }
+
+            // Render Payments List
+            paymentsListDiv.innerHTML = '';
+            if (client.payments.length === 0) {
+                paymentsListDiv.innerHTML = '<p class="text-gray-500 text-center py-4">لا توجد دفعات سداد مسجلة لهذا العميل.</p>';
+            } else {
+                client.payments.sort((a, b) => new Date(a.date) - new Date(b.date)); 
+                client.payments.forEach(payment => {
+                    const paymentItem = document.createElement('div');
+                    paymentItem.className = 'bg-gray-50 p-3 rounded-lg flex justify-between items-center';
+                    const associatedTransaction = payment.transactionId ? client.transactions.find(t => t.id === payment.transactionId) : null;
+                    const transactionDateText = associatedTransaction ? ` (تعبئة ${formatDate(associatedTransaction.date)})` : (payment.transactionId === 'full_payment' ? ' (سداد كامل)' : '');
+
+                    paymentItem.innerHTML = `
+                        <div>
+                            <p class="font-medium">بتاريخ الدفعة: ${formatDate(payment.date)}</p>
+                            <p class="text-sm text-gray-600">المبلغ المدفوع: ${payment.amount.toFixed(2)} ر.س${transactionDateText}</p>
+                        </div>
+                        <button class="text-red-500 hover:text-red-700 p-1 delete-payment-btn" data-payment-id="${payment.id}" title="حذف هذه الدفعة">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    `;
+                    paymentsListDiv.appendChild(paymentItem);
+                });
+                paymentsListDiv.querySelectorAll('.delete-payment-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const paymentIdToDelete = e.currentTarget.dataset.paymentId;
+                        confirmDeletePayment(currentClientId, paymentIdToDelete);
+                    });
+                });
+            }
+
+            debtorDetailsModal.classList.add('active');
+        }
+
+        // Opens the modal for adding a new payment
+        function openPaymentModal() {
+            paymentForm.reset();
+            populateTransactionDatesForPayment(); 
+            paymentModal.classList.add('active');
+        }
+
+        // Populates the dropdown with available transaction dates for the current client
+        function populateTransactionDatesForPayment() {
+            paymentTransactionDateSelect.innerHTML = '<option value="">اختر تاريخ تعبئة...</option>';
+            if (currentClientId && clientsData[currentClientId]) {
+                const client = clientsData[currentClientId];
+                const uniqueTransactions = {};
+                client.transactions.forEach(t => {
+                    if (!uniqueTransactions[t.id]) { 
+                        uniqueTransactions[t.id] = {
+                            date: t.date,
+                            amount: t.amount,
+                            refills: t.refills,
+                            notes: t.notes // Include notes for display in dropdown
+                        };
+                    }
+                });
+
+                const sortedTransactionIds = Object.keys(uniqueTransactions).sort((a, b) => new Date(uniqueTransactions[a].date) - new Date(uniqueTransactions[b].date));
+
+                sortedTransactionIds.forEach(transId => {
+                    const trans = uniqueTransactions[transId];
+                    const option = document.createElement('option');
+                    option.value = transId; 
+                    option.textContent = `${formatDate(trans.date)} (مبلغ: ${trans.amount.toFixed(2)} ر.س, تعبئات: ${trans.refills}${trans.notes ? ', ملاحظات: ' + trans.notes : ''})`;
+                    paymentTransactionDateSelect.appendChild(option);
+                });
+            }
+        }
+
+        // Saves a new payment to the current client
+        function savePayment(e) {
+            e.preventDefault();
+            const transactionId = paymentTransactionDateSelect.value;
+            const date = paymentDateInput.value;
+            const amount = parseFloat(paymentAmountInput.value);
+
+            if (!transactionId || !date || isNaN(amount) || amount <= 0) {
+                alert('الرجاء اختيار تاريخ التعبئة وتعبئة حقول الدفعة بقيم صحيحة (المبلغ يجب أن يكون أكبر من صفر).');
+                return;
+            }
+
+            if (currentClientId && clientsData[currentClientId]) {
+                clientsData[currentClientId].payments.push({
+                    id: Date.now().toString() + '_pay',
+                    date: date,
+                    amount: amount,
+                    transactionId: transactionId 
+                });
+                saveToLocalStorage();
+                paymentModal.classList.remove('active');
+                paymentForm.reset();
+                openDebtorDetails(currentClientId); 
+                alert('تم إضافة الدفعة بنجاح!');
+            }
+        }
+
+        // Function to handle paying the full remaining amount
+        function payFullRemainingAmount() {
+            if (!currentClientId || !clientsData[currentClientId]) return;
+
+            const client = clientsData[currentClientId];
+            const totalDebt = client.transactions.reduce((sum, t) => sum + t.amount, 0);
+            const totalPaid = client.payments.reduce((sum, p) => sum + p.amount, 0);
+            const remainingAmount = totalDebt - totalPaid;
+
+            if (remainingAmount <= 0) {
+                alert('لا يوجد مبلغ متبقي لسداده.');
+                return;
+            }
+
+            if (confirm(`هل أنت متأكد من سداد المبلغ المتبقي بالكامل (${remainingAmount.toFixed(2)} ر.س)؟`)) {
+                clientsData[currentClientId].payments.push({
+                    id: Date.now().toString() + '_full_pay',
+                    date: new Date().toISOString().split('T')[0], 
+                    amount: remainingAmount,
+                    transactionId: 'full_payment' 
+                });
+                saveToLocalStorage();
+                paymentModal.classList.remove('active');
+                openDebtorDetails(currentClientId);
+                alert('تم سداد كامل المبلغ بنجاح!');
+            }
+        }
+
+        // Confirms and deletes a full client (and all their transactions/payments)
+        function confirmDeleteClient() {
+            if (!currentClientId || !clientsData[currentClientId]) return;
+            const clientName = clientsData[currentClientId].name;
+            if (confirm(`هل أنت متأكد من حذف العميل "${clientName}" وجميع سجلات تعبئات الماء والدفعات الخاصة به؟ لا يمكن التراجع عن هذا الإجراء.`)) {
+                delete clientsData[currentClientId];
+                saveToLocalStorage();
+                debtorDetailsModal.classList.remove('active');
+                currentClientId = null; 
+                alert(`تم حذف العميل "${clientName}" بنجاح.`);
+            }
+        }
+
+        // Confirms and deletes a specific water refill transaction
+        function confirmDeleteTransaction(clientId, transactionId) {
+            const client = clientsData[clientId];
+            if (!client) return;
+
+            if (confirm('هل أنت متأكد من حذف تعبئة الماء هذه؟ سيؤثر ذلك على إجمالي الدين المستحق.')) {
+                client.transactions = client.transactions.filter(t => t.id !== transactionId);
+                client.payments = client.payments.filter(p => p.transactionId !== transactionId); 
+                saveToLocalStorage();
+                openDebtorDetails(clientId); 
+                alert('تم حذف تعبئة الماء بنجاح.');
+            }
+        }
+
+        // Confirms and deletes a specific payment entry
+        function confirmDeletePayment(clientId, paymentId) {
+            const client = clientsData[clientId];
+            if (!client) return;
+
+            if (confirm('هل أنت متأكد من حذف دفعة السداد هذه؟ سيؤثر ذلك على إجمالي المبلغ المدفوع والمتبقي.')) {
+                client.payments = client.payments.filter(p => p.id !== paymentId);
+                saveToLocalStorage();
+                openDebtorDetails(clientId); 
+                alert('تم حذف دفعة السداد بنجاح.');
+            }
+        }
+
+        // Helper function to format date for display
+        function formatDate(dateString) {
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            return new Date(dateString).toLocaleDateString('ar-SA', options);
+        }
+
+        // Generates and downloads a PDF invoice for the current client
+        async function generateClientInvoicePdf() {
+            if (!currentClientId || !clientsData[currentClientId]) return;
+            const client = clientsData[currentClientId];
+
+            const totalDebt = client.transactions.reduce((sum, t) => sum + t.amount, 0);
+            const totalRefills = client.transactions.reduce((sum, t) => sum + t.refills, 0);
+            const totalPaid = client.payments.reduce((sum, p) => sum + p.amount, 0);
+            const remainingAmount = totalDebt - totalPaid;
+
+            // Prepare HTML content for PDF
+            const pdfContentDiv = document.getElementById('pdf-content');
+            pdfContentDiv.innerHTML = `
+                <div style="font-family: 'Tajawal', sans-serif; direction: rtl; text-align: right; padding: 15mm;">
+                    <h1 style="text-align: center; margin-bottom: 25px;">فاتورة العميل</h1>
+                    <h2 style="text-align: center; margin-bottom: 20px;">العميل: ${client.name}</h2>
+                    
+                    <table class="total-summary-table" style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #e5e7eb; background-color: #f9fafb;">إجمالي المبلغ المستحق:</td>
+                            <td style="padding: 10px; border: 1px solid #e5e7eb; font-size: 1.1em; font-weight: bold; color: #1e40af;">${totalDebt.toFixed(2)} ر.س</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #e5e7eb;">إجمالي عدد مرات التعبئة:</td>
+                            <td style="padding: 10px; border: 1px solid #e5e7eb;">${totalRefills} مرة</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #e5e7eb; background-color: #f9fafb;">المبلغ المدفوع:</td>
+                            <td style="padding: 10px; border: 1px solid #e5e7eb; font-size: 1.1em; font-weight: bold; color: #059669;">${totalPaid.toFixed(2)} ر.س</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #e5e7eb;">المبلغ المتبقي:</td>
+                            <td style="padding: 10px; border: 1px solid #e5e7eb; font-size: 1.1em; font-weight: bold; color: #dc2626;">${remainingAmount.toFixed(2)} ر.س</td>
+                        </tr>
+                    </table>
+
+                    <h3 style="margin-bottom: 15px;">سجل تعبئات الماء</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+                        <thead>
+                            <tr style="background-color: #eff6ff;">
+                                <th style="padding: 8px; border: 1px solid #e5e7eb;">التاريخ</th>
+                                <th style="padding: 8px; border: 1px solid #e5e7eb;">عدد التعبئات</th>
+                                <th style="padding: 8px; border: 1px solid #e5e7eb;">المبلغ المستحق</th>
+                                <th style="padding: 8px; border: 1px solid #e5e7eb;">ملاحظات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${client.transactions.length > 0 ? 
+                                client.transactions.map(t => `
+                                    <tr>
+                                        <td style="padding: 8px; border: 1px solid #e5e7eb;">${formatDate(t.date)}</td>
+                                        <td style="padding: 8px; border: 1px solid #e5e7eb;">${t.refills}</td>
+                                        <td style="padding: 8px; border: 1px solid #e5e7eb;">${t.amount.toFixed(2)} ر.س</td>
+                                        <td style="padding: 8px; border: 1px solid #e5e7eb;">${t.notes || 'لا يوجد'}</td>
+                                    </tr>
+                                `).join('')
+                            : `<tr><td colspan="4" style="text-align: center; padding: 10px; border: 1px solid #e5e7eb;">لا توجد تعبئات مسجلة.</td></tr>`}
+                        </tbody>
+                    </table>
+
+                    <h3 style="margin-bottom: 15px;">سجل دفعات السداد</h3>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #eff6ff;">
+                                <th style="padding: 8px; border: 1px solid #e5e7eb;">التاريخ الدفعة</th>
+                                <th style="padding: 8px; border: 1px solid #e5e7eb;">المبلغ المدفوع</th>
+                                <th style="padding: 8px; border: 1px solid #e5e7eb;">مرتبطة بتعبئة </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${client.payments.length > 0 ? 
+                                client.payments.map(p => {
+                                    const associatedTransaction = p.transactionId ? client.transactions.find(t => t.id === p.transactionId) : null;
+                                    const transactionDateText = associatedTransaction ? formatDate(associatedTransaction.date) : (p.transactionId === 'full_payment' ? 'سداد كامل' : 'غير محدد');
+                                    return `
+                                    <tr>
+                                        <td style="padding: 8px; border: 1px solid #e5e7eb;">${formatDate(p.date)}</td>
+                                        <td style="padding: 8px; border: 1px solid #e5e7eb;">${p.amount.toFixed(2)} ر.س</td>
+                                        <td style="padding: 8px; border: 1px solid #e5e7eb;">${transactionDateText}</td>
+                                    </tr>
+                                    `;
+                                }).join('')
+                            : `<tr><td colspan="3" style="text-align: center; padding: 10px; border: 1px solid #e5e7eb;">لا توجد دفعات سداد مسجلة.</td></tr>`}
+                        </tbody>
+                    </table>
+
+                    <p style="text-align: center; margin-top: 40px; color: #6b7280; font-size: 0.9em;">
+                        تاريخ الفاتورة: ${formatDate(new Date().toISOString().split('T')[0])}
+                    </p>
+                </div>
+            `;
+
+            pdfContentDiv.classList.remove('hidden');
+
+            try {
+                const canvas = await html2canvas(pdfContentDiv, {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    allowTaint: true
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                const imgWidth = 210;
+                const pageHeight = 297;
+                const imgHeight = canvas.height * imgWidth / canvas.width;
+                let heightLeft = imgHeight;
+
+                let position = 0;
+
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+
+                while (heightLeft >= 0) {
+                    position = heightLeft - imgHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+                }
+                
+                pdf.save(`فاتورة-${client.name}-${new Date().toISOString().split('T')[0]}.pdf`);
+                alert('تم إنشاء ملف PDF بنجاح!');
+
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+                alert('حدث خطأ أثناء إنشاء ملف PDF. يرجى المحاولة مرة أخرى.');
+            } finally {
+                pdfContentDiv.classList.add('hidden');
+                pdfContentDiv.innerHTML = '';
+            }
+        }
+
+        // Initial render when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            renderDebtorList();
+        });
+    </script>
+</body>
+</html>
